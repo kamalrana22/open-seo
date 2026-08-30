@@ -33,7 +33,9 @@ export const projectContextSections = pgTable(
     title: text("title"),
     content: text("content").notNull(),
     updatedAt: text("updated_at").notNull().default(isoNow),
-    updatedBy: text("updated_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    updatedBy: text("updated_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
   },
   // The composite PK is project-leading, so it also serves the "load every
   // section for this project" read.
@@ -53,7 +55,9 @@ export const projectCompetitors = pgTable(
     name: text("name"),
     notes: text("notes"),
     updatedAt: text("updated_at").notNull().default(isoNow),
-    updatedBy: text("updated_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    updatedBy: text("updated_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
   },
   (table) => [
     uniqueIndex("project_competitors_project_domain_idx").on(
@@ -77,7 +81,9 @@ export const projectKeyPages = pgTable(
     topic: text("topic"),
     notes: text("notes"),
     updatedAt: text("updated_at").notNull().default(isoNow),
-    updatedBy: text("updated_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    updatedBy: text("updated_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
   },
   (table) => [
     uniqueIndex("project_key_pages_project_url_idx").on(
@@ -99,7 +105,9 @@ export const projectResearchLog = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     entryDate: text("entry_date").notNull(),
     summary: text("summary").notNull(),
-    createdBy: text("created_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    createdBy: text("created_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
     // entry_date is a day stamp, so recency needs its own column — same-day
     // entries would otherwise tie-break on a random uuid.
     createdAt: text("created_at").notNull().default(isoNow),

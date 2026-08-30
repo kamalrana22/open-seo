@@ -51,6 +51,7 @@ const AUTHOR_LABELS: Record<ContextAuthor, string> = {
   user: "you",
   sam: "SAM",
   mcp: "your AI client",
+  onboarding: "the onboarding chat",
 };
 
 export function Provenance({ by, at }: { by: ContextAuthor; at?: string }) {

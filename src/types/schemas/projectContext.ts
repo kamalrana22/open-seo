@@ -34,7 +34,7 @@ export const KEY_PAGE_ROLES = ["hub", "spoke", "money", "other"] as const;
 const keyPageRoleSchema = z.enum(KEY_PAGE_ROLES);
 export type KeyPageRole = z.infer<typeof keyPageRoleSchema>;
 
-const CONTEXT_AUTHORS = ["user", "sam", "mcp"] as const;
+const CONTEXT_AUTHORS = ["user", "sam", "mcp", "onboarding"] as const;
 const contextAuthorSchema = z.enum(CONTEXT_AUTHORS);
 export type ContextAuthor = z.infer<typeof contextAuthorSchema>;
 

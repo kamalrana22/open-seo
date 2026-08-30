@@ -30,7 +30,9 @@ export const projectContextSections = sqliteTable(
     updatedAt: text("updated_at")
       .notNull()
       .default(sql`(current_timestamp)`),
-    updatedBy: text("updated_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    updatedBy: text("updated_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
   },
   // The composite PK is project-leading, so it also serves the "load every
   // section for this project" read.
@@ -52,7 +54,9 @@ export const projectCompetitors = sqliteTable(
     updatedAt: text("updated_at")
       .notNull()
       .default(sql`(current_timestamp)`),
-    updatedBy: text("updated_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    updatedBy: text("updated_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
   },
   (table) => [
     uniqueIndex("project_competitors_project_domain_idx").on(
@@ -78,7 +82,9 @@ export const projectKeyPages = sqliteTable(
     updatedAt: text("updated_at")
       .notNull()
       .default(sql`(current_timestamp)`),
-    updatedBy: text("updated_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    updatedBy: text("updated_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
   },
   (table) => [
     uniqueIndex("project_key_pages_project_url_idx").on(
@@ -100,7 +106,9 @@ export const projectResearchLog = sqliteTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     entryDate: text("entry_date").notNull(),
     summary: text("summary").notNull(),
-    createdBy: text("created_by", { enum: ["user", "sam", "mcp"] }).notNull(),
+    createdBy: text("created_by", {
+      enum: ["user", "sam", "mcp", "onboarding"],
+    }).notNull(),
     // entry_date is a day stamp, so recency needs its own column — same-day
     // entries would otherwise tie-break on a random uuid. The default emits
     // ISO (unlike current_timestamp's space format) because listResearchLog

@@ -7,6 +7,7 @@ import {
   type ToolSet,
 } from "ai";
 import type { OnChatMessageOptions } from "@cloudflare/ai-chat";
+import { withPgClient } from "@/db";
 import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
 import { buildOnboardingTools } from "@/server/features/onboarding/onboardingChatTools";
 import { getChatAgentModel } from "@/server/lib/openrouter";
@@ -52,6 +53,7 @@ function buildSystemPrompt(domain: string | null): string {
     "'## Themes' — 3-5 content/topic themes worth owning, each a bullet with a one-line rationale.",
     "'## Target keywords' — a short Markdown table with columns Keyword | Volume | KD | Why it fits. Every keyword, and its Volume and KD, must come from a tool (get_seo_metrics, research_keywords, or get_competitor_keywords) — never invent, estimate, or leave these numbers blank. For keywords they already rank for, note it plainly in the 'Why it fits' column (e.g. 'you rank #17') — do not add emoji or symbol markers to the keyword. If you genuinely could not get keyword data for their market, say so in one line instead of showing a table with made-up numbers.",
     "Close with a single short sentence offering to go deeper on any theme or keyword — not a 'next steps' or homework list.",
+    "Right after presenting a strategy, call save_strategy with a short business overview (what the business does and for whom, from what you read), the positioning paragraph, and the themes + target-keywords Markdown, then tell the user in one short line that it's saved to their project so OpenSEO and its agents start from it when they upgrade. Save once per strategy; save again only if the user materially revises it.",
     domain
       ? `The user's website is ${domain}.`
       : "If you need the user's website before answering, ask for it briefly.",
@@ -109,7 +111,12 @@ export class OnboardingChatAgent extends AIChatAgent {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     options?: OnChatMessageOptions,
   ): Promise<Response | undefined> {
-    const project = await ProjectRepository.getProjectById(this.name);
+    // DO handlers run outside any ambient request scope, so scope a Postgres
+    // client for the lookup (no-op in D1 mode) — same rule as SamChatAgent's
+    // DB-touching seams.
+    const project = await withPgClient(() =>
+      ProjectRepository.getProjectById(this.name),
+    );
     if (!project) {
       return staticAssistantResponse(
         "I couldn't find your project. Please refresh and try again.",
