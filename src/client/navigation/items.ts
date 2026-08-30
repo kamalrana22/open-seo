@@ -5,6 +5,7 @@ import {
   Globe,
   LayoutDashboard,
   Link2,
+  MapPin,
   MessageSquare,
   Search,
   Sparkles,
@@ -58,6 +59,11 @@ const projectNavItems = [
     icon: ClipboardCheck,
   },
   {
+    to: "/p/$projectId/local" as const,
+    label: "Local SEO",
+    icon: MapPin,
+  },
+  {
     to: "/p/$projectId/brand-lookup" as const,
     label: "Brand Lookup",
     icon: Sparkles,
@@ -109,6 +115,7 @@ export function getProjectNavGroups(projectId: string) {
         byPath("/p/$projectId/keywords"),
         byPath("/p/$projectId/domain"),
         byPath("/p/$projectId/backlinks"),
+        byPath("/p/$projectId/local"),
         byPath("/p/$projectId/brand-lookup"),
         byPath("/p/$projectId/prompt-explorer"),
       ],
