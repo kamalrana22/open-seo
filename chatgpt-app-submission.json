@@ -559,6 +559,30 @@
         "open_world_justification": "Operates only on private OpenSEO state or private provider data and cannot change publicly visible internet state.",
         "destructive_justification": "Does not delete, overwrite, revoke access, send messages, or perform irreversible actions."
       }
+    },
+    "get_brand_ai_visibility": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Fetches AI-search brand mention data from a private SEO research provider and records resulting usage against the user's OpenSEO credit balance.",
+        "open_world_justification": "Operates only on private OpenSEO state or private provider data and cannot change publicly visible internet state.",
+        "destructive_justification": "May use metered research credits but does not delete, overwrite, revoke access, send, or publish anything."
+      }
+    },
+    "explore_ai_prompt": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Asks the selected AI models one research prompt through a private SEO research provider and records resulting usage against the user's OpenSEO credit balance.",
+        "open_world_justification": "Operates only on private OpenSEO state or private provider data and cannot change publicly visible internet state.",
+        "destructive_justification": "May use metered research credits but does not delete, overwrite, revoke access, send, or publish anything."
+      }
     }
   },
   "test_cases": [

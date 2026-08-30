@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Tool } from "ai";
-import { waitingAuditStatusTool } from "./samChatTools";
+import { TOOL_REGISTRY } from "@/server/mcp/tool-definition";
+import { makeToolContext } from "@/server/mcp/tools/tool-test-support";
+import {
+  buildSamMcpTools,
+  SAM_TOOL_OVERRIDES,
+  waitingAuditStatusTool,
+} from "./samChatTools";
 
 vi.mock("cloudflare:workers", () => ({
   env: {},
@@ -34,6 +40,34 @@ const callOptions = { toolCallId: "t", messages: [] };
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+// SAM's toolset is derived from TOOL_REGISTRY, so the MCP server and the
+// in-app agent can't drift (this list once drifted for six weeks: audit, GA4,
+// and rank-tracker management were MCP-only before anyone noticed).
+describe("buildSamMcpTools", () => {
+  it("mirrors the MCP tool registry plus SAM's own free tools", () => {
+    const tools = buildSamMcpTools(makeToolContext().auth, {
+      id: "project_123",
+      domain: null,
+    });
+    expect(Object.keys(tools)).toEqual([
+      "get_product_info",
+      "map_links",
+      "read_pages",
+      ...TOOL_REGISTRY.filter((entry) => !entry.samExclude).map(
+        (entry) => entry.tool.name,
+      ),
+    ]);
+  });
+
+  it("has unique registry names and overrides that target real tools", () => {
+    const names = TOOL_REGISTRY.map((entry) => entry.tool.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of Object.keys(SAM_TOOL_OVERRIDES)) {
+      expect(names).toContain(name);
+    }
+  });
 });
 
 describe("waitingAuditStatusTool", () => {

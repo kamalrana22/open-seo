@@ -1,7 +1,10 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
+import { withPgClient } from "@/db";
 import { AppError } from "@/server/lib/errors";
 import { MAX_PAGES, readPages, readSite } from "@/server/lib/scrape";
+import { ProjectContextService } from "@/server/features/project-context/services/ProjectContextService";
+import { PROSE_MAX_CHARS } from "@/types/schemas/projectContext";
 import { DomainService } from "@/server/features/domain/services/DomainService";
 import { KeywordResearchService } from "@/server/features/keywords/services/KeywordResearchService";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
@@ -190,6 +193,59 @@ function coreSiteTools(ctx: ToolContext): ToolSet {
           });
           throw error;
         }
+      },
+    }),
+    save_strategy: tool({
+      description:
+        "Save the strategy you just presented into the project's shared memory (business overview, positioning, and the SEO strategy) so the full product and its agents pick it up after the user upgrades. Call it once, right after presenting a strategy; call again only if the user materially revises it. Uses no credits.",
+      inputSchema: z.object({
+        businessOverview: z
+          .string()
+          .min(1)
+          .max(PROSE_MAX_CHARS)
+          .describe(
+            "2-4 plain sentences on what the business does, who it serves, and its market — from the site you read.",
+          ),
+        positioning: z
+          .string()
+          .min(1)
+          .max(PROSE_MAX_CHARS)
+          .describe("The '## Positioning' paragraph."),
+        strategy: z
+          .string()
+          .min(1)
+          .max(PROSE_MAX_CHARS)
+          .describe(
+            "The '## Themes' bullets and the '## Target keywords' table, as Markdown.",
+          ),
+      }),
+      execute: async ({ businessOverview, positioning, strategy }) => {
+        // Tool calls run outside any ambient request scope, so scope a
+        // Postgres client per execution (no-op in D1 mode) — same rule as
+        // SAM's adapted tools.
+        await withPgClient(() =>
+          ProjectContextService.applyContextUpdates(
+            project.id,
+            [
+              { section: "business_overview", content: businessOverview },
+              { section: "positioning", content: positioning },
+              {
+                customSection: "seo-strategy",
+                title: "SEO strategy",
+                content: strategy,
+              },
+              {
+                appendResearchLog: {
+                  summary:
+                    "Onboarding strategy saved: positioning, content themes, and target keywords.",
+                },
+              },
+            ],
+            "onboarding",
+          ),
+        );
+        // Keep the pre-paywall transcript small: don't echo the context back.
+        return { saved: true };
       },
     }),
     research_keywords: tool({
