@@ -7,6 +7,7 @@ import {
   type BusinessTaskEndpoint,
   type BusinessTaskOutcome,
 } from "@/server/lib/dataforseo";
+import { LocalSeoService } from "@/server/features/local-seo/services/LocalSeoService";
 import { AppError } from "@/server/lib/errors";
 import { buildCacheKey, getCached, setCached } from "@/server/lib/r2-cache";
 import { buildProjectMeta } from "@/server/mcp/context";
@@ -231,12 +232,11 @@ export const getBusinessProfileTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: GetBusinessProfileArgs, context) => {
-    const identifier = resolveBusinessIdentifier(args);
-    const client = createDataforseoClient(context.billing);
-    const profile = await client.business.myBusinessInfo({
-      keyword: businessIdentifierKeyword(identifier),
-      ...resolveBusinessLocation(args, context.project),
-    });
+    const profile = await LocalSeoService.getBusinessProfile(
+      args,
+      context.project,
+      context.billing,
+    );
 
     return mcpResponse({
       text: profile
@@ -291,51 +291,6 @@ type GetBusinessReviewsArgs = z.infer<
   z.ZodObject<typeof getBusinessReviewsInputSchema>
 >;
 
-const REVIEWS_TASK_ID_PATTERN = /^(google|extended):(.+)$/;
-
-function encodeReviewsTaskId(includeOtherSources: boolean, id: string): string {
-  return `${includeOtherSources ? "extended" : "google"}:${id}`;
-}
-
-function parseReviewsTaskId(taskId: string): {
-  endpoint: BusinessTaskEndpoint;
-  taskId: string;
-} {
-  const match = REVIEWS_TASK_ID_PATTERN.exec(taskId);
-  if (!match) {
-    throw new AppError(
-      "VALIDATION_ERROR",
-      'taskId must be the value this tool returned, formatted as "google:<id>" or "extended:<id>".',
-    );
-  }
-  return {
-    endpoint: match[1] === "extended" ? "extended_reviews" : "reviews",
-    taskId: match[2] ?? "",
-  };
-}
-
-// Full review rows carry ~200-char base64 review URLs, avatar URLs, and
-// xpaths; the fields below are what review-gap analysis actually reads.
-const REVIEW_ROW_FIELDS = [
-  "rank_absolute",
-  "time_ago",
-  "timestamp",
-  "rating",
-  "review_text",
-  "original_review_text",
-  "original_language",
-  "profile_name",
-  "local_guide",
-  "reviews_count",
-  "photos_count",
-  "review_highlights",
-  "source",
-  "owner_answer",
-  "owner_time_ago",
-  "owner_timestamp",
-  "review_id",
-] as const;
-
 const REVIEW_COLUMNS: McpTableColumn<unknown>[] = [
   { header: "#", value: (row) => readPath(row, "rank_absolute") },
   {
@@ -380,34 +335,27 @@ export const getBusinessReviewsTool = {
     },
   },
   handler: withMcpProjectAuth(async (args: GetBusinessReviewsArgs, context) => {
-    const includeOtherSources = args.includeOtherSources ?? false;
-    let task: { endpoint: BusinessTaskEndpoint; taskId: string };
-    let publicTaskId: string;
+    // Only the post is metered; the polling below collects for free.
+    const publicTaskId =
+      args.taskId ??
+      (
+        await LocalSeoService.startBusinessReviews(
+          args,
+          context.project,
+          context.billing,
+        )
+      ).taskId;
 
-    if (args.taskId) {
-      task = parseReviewsTaskId(args.taskId);
-      publicTaskId = args.taskId;
-    } else {
-      const identifier = resolveBusinessIdentifier(args);
-      const client = createDataforseoClient(context.billing);
-      // Only the post is metered; the polling below collects for free.
-      const postedId = await client.business.reviewsTaskPost({
-        ...identifier,
-        ...resolveBusinessLocation(args, context.project),
-        depth: args.depth ?? 20,
-        // The fetcher's extended branch has no sort_by and ignores this.
-        sortBy: args.sortBy ?? "newest",
-        includeOtherSources,
-      });
-      task = {
-        endpoint: includeOtherSources ? "extended_reviews" : "reviews",
-        taskId: postedId,
-      };
-      publicTaskId = encodeReviewsTaskId(includeOtherSources, postedId);
+    let outcome = await LocalSeoService.collectBusinessReviews(publicTaskId);
+    for (
+      let attempt = 1;
+      attempt < TASK_POLL_ATTEMPTS && outcome.status === "processing";
+      attempt++
+    ) {
+      await wait(TASK_POLL_INTERVAL_MS);
+      outcome = await LocalSeoService.collectBusinessReviews(publicTaskId);
     }
-
-    const outcome = await pollBusinessTask(task, publicTaskId);
-    if (outcome.status === "pending") {
+    if (outcome.status === "processing") {
       return mcpResponse({
         text: `Review collection is still running. Call get_business_reviews again with taskId "${publicTaskId}" in 30-60 seconds — resuming charges no extra credits.`,
         meta: buildProjectMeta(context, args.projectId, `/p/${args.projectId}`),
@@ -415,19 +363,7 @@ export const getBusinessReviewsTool = {
       });
     }
 
-    const reviews = resultItems(outcome.result).map((row) =>
-      pickRowFields(row, REVIEW_ROW_FIELDS),
-    );
-    const totals = outcome.result
-      ? {
-          title: outcome.result.title ?? null,
-          reviews_count: outcome.result.reviews_count ?? null,
-          rating: outcome.result.rating ?? null,
-          cid: outcome.result.cid ?? null,
-          place_id: outcome.result.place_id ?? null,
-        }
-      : null;
-
+    const { reviews, totals } = outcome;
     const header = `Collected ${reviews.length} reviews${typeof totals?.reviews_count === "number" ? ` of ${totals.reviews_count} total` : ""}.`;
     return mcpResponse({
       text:

@@ -5,6 +5,7 @@ import {
   fetchKeywordMetricsForList,
   type KeywordMetricRow,
 } from "@/server/lib/dataforseo";
+import { LocalSeoService } from "@/server/features/local-seo/services/LocalSeoService";
 import { buildProjectMeta } from "@/server/mcp/context";
 import { mcpResponse } from "@/server/mcp/formatters";
 import {
@@ -20,8 +21,6 @@ import {
 import {
   businessIdentifierInputSchema,
   businessIdentifierKeyword,
-  formatBusinessDataCoordinate,
-  formatCoordinate,
   formatLocalSerpCoordinate,
   pickRowFields,
   resolveBusinessIdentifier,
@@ -449,13 +448,6 @@ function resolveMarketSelector(
   return resolved;
 }
 
-function formatBusinessLocationCoordinate(near: z.infer<typeof nearSchema>) {
-  // Business Listings rejects fractional radii ("Invalid Field:
-  // 'location_coordinate'"), unlike the meter-based business_data radius.
-  const radiusKm = Math.max(1, Math.round(near.radiusKm));
-  return `${formatCoordinate(near.latitude)},${formatCoordinate(near.longitude)},${radiusKm}`;
-}
-
 function sortOrderByRankedMode(
   sortBy: GetRankedKeywordsArgs["sortBy"] = "search_volume",
 ): string[] {
@@ -514,33 +506,6 @@ function buildRankedKeywordFilters(
   }
   assertFilterConditionBudget(conditionCount);
   return filters.length > 0 ? filters : undefined;
-}
-
-function buildLocalBusinessFilters(args: {
-  minRating?: number;
-  minReviews?: number;
-}) {
-  const filters: unknown[] = [];
-  if (args.minRating != null) {
-    pushAnd(filters, ["rating.value", ">=", args.minRating]);
-  }
-  if (args.minReviews != null) {
-    pushAnd(filters, ["rating.votes_count", ">=", args.minReviews]);
-  }
-  return filters.length > 0 ? filters : undefined;
-}
-
-function localBusinessOrderBy(
-  sortBy: SearchLocalBusinessesArgs["sortBy"],
-): string[] | undefined {
-  switch (sortBy) {
-    case "rating":
-      return ["rating.value,desc"];
-    case "reviews":
-      return ["rating.votes_count,desc"];
-    default:
-      return undefined;
-  }
 }
 
 function sortCompetitors(
@@ -644,29 +609,6 @@ const RANKED_KEYWORD_COLUMNS: McpTableColumn<RankedKeywordRow>[] = [
   { header: "url", value: (row) => row.url },
 ];
 
-// Full Business Listings rows are ~9KB each (popular_times for every day,
-// attribute trees, photo URLs) — 10 of them overflow MCP clients' tool-result
-// budgets. Return only the fields a candidate list needs; get_business_profile
-// serves the full shape for one business.
-const LOCAL_BUSINESS_ROW_FIELDS = [
-  "title",
-  "description",
-  "category",
-  "additional_categories",
-  "address",
-  "phone",
-  "url",
-  "domain",
-  "rating",
-  "is_claimed",
-  "cid",
-  "place_id",
-  "latitude",
-  "longitude",
-  "total_photos",
-  "check_url",
-] as const;
-
 // Maps SERP rows likewise ship image CDN URLs, feature ids, and contributor
 // links no consumer reads; keep identity, rank, rating, categories, and hours.
 const LOCAL_SERP_ROW_FIELDS = [
@@ -715,36 +657,6 @@ const LOCAL_SERP_COLUMNS: McpTableColumn<unknown>[] = [
   { header: "phone", value: (row) => readPath(row, "phone") },
   { header: "address", value: (row) => readPath(row, "address") },
 ];
-
-// Q&A rows carry a ~300-char uule URL plus avatar/contributor links on every
-// question AND every nested answer; keep the text, author, and timing.
-const BUSINESS_QUESTION_ROW_FIELDS = [
-  "rank_absolute",
-  "question_id",
-  "question_text",
-  "original_question_text",
-  "profile_name",
-  "time_ago",
-  "timestamp",
-] as const;
-
-const BUSINESS_ANSWER_ROW_FIELDS = [
-  "answer_id",
-  "answer_text",
-  "original_answer_text",
-  "profile_name",
-  "time_ago",
-  "timestamp",
-] as const;
-
-function trimBusinessQuestionRow(row: unknown): Record<string, unknown> {
-  const trimmed = pickRowFields(row, BUSINESS_QUESTION_ROW_FIELDS);
-  const answers = readPath(row, "items");
-  trimmed.items = Array.isArray(answers)
-    ? answers.map((answer) => pickRowFields(answer, BUSINESS_ANSWER_ROW_FIELDS))
-    : null;
-  return trimmed;
-}
 
 const BUSINESS_QUESTION_COLUMNS: McpTableColumn<unknown>[] = [
   { header: "question", value: (row) => readPath(row, "question_text") },
@@ -878,19 +790,9 @@ export const searchLocalBusinessesTool = {
   },
   handler: withMcpProjectAuth(
     async (args: SearchLocalBusinessesArgs, context) => {
-      const client = createDataforseoClient(context.billing);
-      const rows = await client.business.businessListings({
-        categories: args.categories,
-        title: args.query,
-        locationCoordinate: formatBusinessLocationCoordinate(args.near),
-        isClaimed: args.isClaimed,
-        filters: buildLocalBusinessFilters(args),
-        orderBy: localBusinessOrderBy(args.sortBy),
-        limit: args.limit ?? 20,
-        offset: args.offset,
-      });
-      const businesses = rows.map((row) =>
-        pickRowFields(row, LOCAL_BUSINESS_ROW_FIELDS),
+      const businesses = await LocalSeoService.searchLocalBusinesses(
+        args,
+        context.billing,
       );
 
       const header = `Found ${businesses.length} local business rows${args.query ? ` for ${args.query}` : ""}.`;
@@ -972,15 +874,11 @@ export const getGoogleBusinessQuestionsTool = {
   handler: withMcpProjectAuth(
     async (args: GetGoogleBusinessQuestionsArgs, context) => {
       const identifier = resolveBusinessIdentifier(args);
-      const client = createDataforseoClient(context.billing);
-      const rows = await client.business.questionsAnswers({
-        // The questions endpoint shares the cid:/place_id: keyword prefixes.
-        keyword: businessIdentifierKeyword(identifier),
-        locationCoordinate: formatBusinessDataCoordinate(args.near),
-        languageCode: args.languageCode ?? context.project.languageCode,
-        depth: args.depth ?? 20,
-      });
-      const questions = rows.map(trimBusinessQuestionRow);
+      const questions = await LocalSeoService.getBusinessQuestions(
+        args,
+        context.project,
+        context.billing,
+      );
 
       const header = `Fetched ${questions.length} Google Business Q&A rows for ${businessIdentifierKeyword(identifier)}.`;
       return mcpResponse({
