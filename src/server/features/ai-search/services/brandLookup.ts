@@ -10,6 +10,7 @@ import {
 import type { LlmCrossAggregatedItem } from "@/server/lib/dataforseoLlmSchemas";
 import { AppError } from "@/server/lib/errors";
 import { buildCacheKey, getCached, setCached } from "@/server/lib/r2-cache";
+import { requireAiSearchAccess } from "@/server/features/ai-search/services/access";
 import {
   resolveCompetitorGroups,
   type CompetitorGroup,
@@ -52,6 +53,8 @@ export async function getBrandLookup(
   input: BrandLookupInput,
   billingCustomer: BillingCustomerContext,
 ): Promise<BrandLookupResult> {
+  // Before the cache read too: a free plan never gets cached paid results.
+  await requireAiSearchAccess(billingCustomer.organizationId);
   const detected = detectTarget(input.query);
   const researchTarget = resolveResearchTarget(input, detected);
   // The LLM mentions API only scopes a domain target by subdomain inclusion;

@@ -9,6 +9,7 @@ import {
   getCached,
   setCached,
 } from "@/server/lib/r2-cache";
+import { requireAiSearchAccess } from "@/server/features/ai-search/services/access";
 import { safeHostname, safeHttpUrl } from "@/server/features/ai-search/safeUrl";
 import {
   promptExplorerModelResultSchema,
@@ -47,6 +48,8 @@ export async function explorePrompt(
   input: PromptExplorerInput,
   billingCustomer: BillingCustomerContext,
 ): Promise<PromptExplorerResult> {
+  // Before the cache reads too: a free plan never gets cached paid results.
+  await requireAiSearchAccess(billingCustomer.organizationId);
   const dataforseo = createDataforseoClient(billingCustomer);
   const highlightBrand = input.highlightBrand?.trim() || null;
 

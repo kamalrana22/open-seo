@@ -44,7 +44,13 @@ vi.mock("@/server/lib/dataforseo", () => {
 
 vi.mock("@/server/lib/r2-cache", () => cacheMock);
 
+const accessMock = vi.hoisted(() => ({
+  requireAiSearchAccess: vi.fn(() => Promise.resolve()),
+}));
+vi.mock("@/server/features/ai-search/services/access", () => accessMock);
+
 import { getBrandLookup } from "./brandLookup";
+import { AppError } from "@/server/lib/errors";
 import { shapeResult, type ShapeArgs } from "./brandLookupShaping";
 import { resolveCompetitorGroups } from "./shareOfVoice";
 import { brandLookupSearchSchema } from "@/types/schemas/ai-search";
@@ -323,3 +329,30 @@ function topPage(
     platform: [{ key: platform, mentions, ai_search_volume: aiSearchVolume }],
   };
 }
+
+// MCP tools and server functions both rely on the service itself enforcing
+// the hosted paid-plan gate; a lookup must fail before any cache read or paid
+// provider call.
+describe("getBrandLookup access gate", () => {
+  it("propagates a gate rejection before any cache read or paid call", async () => {
+    accessMock.requireAiSearchAccess.mockRejectedValueOnce(
+      new AppError("PAYMENT_REQUIRED", "Upgrade to the paid plan"),
+    );
+    await expect(
+      getBrandLookup(
+        {
+          projectId: "project_123",
+          query: "acme.com",
+          competitors: [],
+          locationCode: 2840,
+          languageCode: "en",
+        },
+        billingCustomer,
+      ),
+    ).rejects.toMatchObject({ code: "PAYMENT_REQUIRED" });
+    expect(cacheMock.getCached).not.toHaveBeenCalled();
+    expect(
+      dataforseoClientMock.aiSearch.aggregatedMetrics,
+    ).not.toHaveBeenCalled();
+  });
+});

@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { AppError } from "@/server/lib/errors";
 import type { LlmResponseResult } from "@/server/lib/dataforseoLlmSchemas";
 
 vi.mock("cloudflare:workers", () => ({ waitUntil: vi.fn() }));
 
-const { extractCitations } = await import("./promptExplorer");
+const accessMock = vi.hoisted(() => ({
+  requireAiSearchAccess: vi.fn(() => Promise.resolve()),
+}));
+vi.mock("@/server/features/ai-search/services/access", () => accessMock);
+
+const { explorePrompt, extractCitations } = await import("./promptExplorer");
 
 // DataForSEO's LLM Responses payload nests references as untyped
 // `{ title, url }` objects under items[].sections[].annotations — mirroring the
@@ -74,5 +80,30 @@ describe("extractCitations", () => {
         ],
       }),
     ).toEqual([]);
+  });
+});
+
+// MCP tools and server functions both rely on the service itself enforcing
+// the hosted paid-plan gate; the prompt must fail before any paid model call.
+describe("explorePrompt access gate", () => {
+  it("propagates a gate rejection before any paid model call", async () => {
+    accessMock.requireAiSearchAccess.mockRejectedValueOnce(
+      new AppError("PAYMENT_REQUIRED", "Upgrade to the paid plan"),
+    );
+    await expect(
+      explorePrompt(
+        {
+          projectId: "project_123",
+          prompt: "best running shoes",
+          models: ["chat_gpt"],
+          webSearch: true,
+        },
+        {
+          organizationId: "org_123",
+          userId: "user_123",
+          userEmail: "alice@example.com",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "PAYMENT_REQUIRED" });
   });
 });

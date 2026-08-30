@@ -61,6 +61,10 @@ import {
   getAuditStatusTool,
   runSiteAuditTool,
 } from "@/server/mcp/tools/site-audit-tools";
+import {
+  exploreAiPromptTool,
+  getBrandAiVisibilityTool,
+} from "@/server/mcp/tools/ai-search-tools";
 import { whoamiTool } from "@/server/mcp/tools/whoami";
 
 // Tools declare inputSchema as either a raw Zod shape (most tools) or a full
@@ -163,4 +167,6 @@ export const TOOL_REGISTRY: readonly ToolRegistryEntry[] = [
   { tool: getAuditStatusTool },
   { tool: getAuditIssuesTool },
   { tool: getAuditPagesTool },
+  { tool: getBrandAiVisibilityTool },
+  { tool: exploreAiPromptTool },
 ];

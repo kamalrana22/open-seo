@@ -172,6 +172,23 @@ const toolCategories: ToolCategory[] = [
     ],
   },
   {
+    label: "AI Visibility",
+    tools: [
+      {
+        name: "get_brand_ai_visibility",
+        title: "Get brand AI visibility",
+        description:
+          "Check a brand's mentions, share of voice, and cited pages in ChatGPT and Google AI Overview.",
+      },
+      {
+        name: "explore_ai_prompt",
+        title: "Explore AI prompt",
+        description:
+          "Ask one prompt across ChatGPT, Claude, Gemini, and Perplexity and compare the answers.",
+      },
+    ],
+  },
+  {
     label: "Search Console",
     tools: [
       {
